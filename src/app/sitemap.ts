@@ -4,6 +4,8 @@ import { solutions } from "@/data/solutions";
 import { projects } from "@/data/projects";
 import { jobs } from "@/data/jobs";
 
+export const dynamic = "force-static";
+
 const lastModified = new Date();
 
 export default function sitemap(): MetadataRoute.Sitemap {

@@ -1,12 +1,20 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
-import { Check, LoaderCircle } from "lucide-react";
+import { useId, useState } from "react";
+import Link from "next/link";
+import { Check } from "lucide-react";
+import { z } from "zod";
 import type { IconName } from "@/types/content";
-import { enquiryTypes, projectTypes, type EnquiryType, type ProjectType } from "@/lib/enquiry-options";
+import {
+  enquiryTypes,
+  projectTypes,
+  type EnquiryField,
+  type EnquiryType,
+  type ProjectType,
+} from "@/lib/enquiry-options";
 import { cn } from "@/lib/utils";
-import { submitEnquiryAction } from "@/app/contact/actions";
-import { initialEnquiryState } from "@/lib/enquiry-state";
+import { enquirySchema } from "@/lib/enquiry-schema";
+import { siteConfig } from "@/config/site";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { SelectField, TextField, TextareaField } from "./FormField";
@@ -28,9 +36,8 @@ interface EnquiryFormProps {
 }
 
 /**
- * Enquiry form: progressive enhancement via Server Action, client-side state
- * for a polished experience. Validation errors come from the server so the
- * rules live in one place (`lib/enquiry-schema.ts`).
+ * Static-host-compatible enquiry form. It validates in the browser, then opens
+ * a prefilled message in the visitor's email app.
  */
 export function EnquiryForm({
   defaultEnquiryType = "Sales",
@@ -38,27 +45,24 @@ export function EnquiryForm({
   compact = false,
   className,
 }: EnquiryFormProps) {
-  const [state, formAction, pending] = useActionState(submitEnquiryAction, initialEnquiryState);
+  const [emailPrepared, setEmailPrepared] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<EnquiryField, string>>>({});
   const [enquiryType, setEnquiryType] = useState<EnquiryType>(defaultEnquiryType);
   const [projectType, setProjectType] = useState<string>(defaultProjectType);
   const [fullName, setFullName] = useState("");
   const uid = useId();
   const id = (f: string) => `${uid}-${f}`;
-  const errors = state.errors ?? {};
 
-  if (state.status === "success") {
+  if (emailPrepared) {
     return (
       <div className={cn("rounded-[var(--radius-media)] border border-line bg-card p-6 sm:p-8", className)} role="status" aria-live="polite">
         <span className="inline-flex size-12 items-center justify-center rounded-full bg-primary text-white">
           <Check aria-hidden className="size-6" />
         </span>
-        <h3 className="text-h3 mt-5">Thanks{fullName ? `, ${fullName.split(" ")[0]}` : ""}. We have your enquiry.</h3>
+        <h3 className="text-h3 mt-5">Thanks{fullName ? `, ${fullName.split(" ")[0]}` : ""}.</h3>
         <p className="mt-2 text-[15px] leading-relaxed text-fg-muted">
-          Our team will review the details and get back to you. Keep the reference below for follow-ups.
+          Your email app should now show a prefilled enquiry. Send that email and our team will get back to you.
         </p>
-        {state.reference && (
-          <p className="mt-4 inline-block rounded-full bg-card-2 px-3 py-1.5 font-mono text-sm">{state.reference}</p>
-        )}
         <div className="mt-6 flex flex-col gap-3 xs:flex-row">
           <Button href="/solutions" variant="primary" icon="arrow">
             Explore solutions
@@ -71,9 +75,42 @@ export function EnquiryForm({
     );
   }
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsed = enquirySchema.safeParse(Object.fromEntries(new FormData(event.currentTarget).entries()));
+
+    if (!parsed.success) {
+      const fieldErrors = z.flattenError(parsed.error).fieldErrors;
+      const nextErrors: Partial<Record<EnquiryField, string>> = {};
+      for (const [key, messages] of Object.entries(fieldErrors)) {
+        if (messages?.[0]) nextErrors[key as EnquiryField] = messages[0];
+      }
+      setErrors(nextErrors);
+      return;
+    }
+
+    if (parsed.data.website) return;
+
+    setErrors({});
+    const subject = `Website enquiry: ${parsed.data.enquiryType}`;
+    const body = [
+      `Name: ${parsed.data.fullName}`,
+      `Company: ${parsed.data.company || "Not provided"}`,
+      `Phone: ${parsed.data.phone}`,
+      `Email: ${parsed.data.email}`,
+      `City: ${parsed.data.city}`,
+      `Project type: ${parsed.data.projectType}`,
+      "",
+      parsed.data.message,
+    ].join("\n");
+
+    setEmailPrepared(true);
+    window.location.href = `mailto:${siteConfig.contact.sales}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
   return (
     <form
-      action={formAction}
+      onSubmit={handleSubmit}
       noValidate
       className={cn("rounded-[var(--radius-media)] border border-line bg-card p-5 sm:p-8", className)}
     >
@@ -199,28 +236,22 @@ export function EnquiryForm({
         />
       </div>
 
-      {state.status === "error" && !state.errors && (
-        <p className="mt-4 rounded-xl border border-[#b4462a]/30 bg-[#b4462a]/5 px-4 py-3 text-sm text-[#8a331e]" role="alert">
-          {state.message}
-        </p>
-      )}
-      {state.status === "error" && state.errors && (
+      {Object.keys(errors).length > 0 && (
         <p className="mt-4 text-sm text-[#8a331e]" role="alert">
-          {state.message}
+          Please check the highlighted fields.
         </p>
       )}
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-fg-soft">
           By submitting you agree to our{" "}
-          <a href="/privacy-policy" className="underline underline-offset-2 hover:text-fg">
+          <Link href="/privacy-policy" className="underline underline-offset-2 hover:text-fg">
             privacy policy
-          </a>
+          </Link>
           .
         </p>
-        <Button type="submit" variant="primary" size="lg" icon={pending ? "none" : "arrow"} disabled={pending}>
-          {pending && <LoaderCircle aria-hidden className="size-4 animate-spin" />}
-          {pending ? "Sending…" : "Send Enquiry"}
+        <Button type="submit" variant="primary" size="lg" icon="arrow">
+          Prepare Email
         </Button>
       </div>
     </form>

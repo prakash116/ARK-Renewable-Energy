@@ -4,7 +4,8 @@ import { resolveTone, type Tone } from "@/lib/solar-scenes";
 
 /** URL of the prerendered SVG asset for a scene. */
 export function visualSrc(variant: VisualVariant, tone?: Tone) {
-  return `/visuals/${variant}-${resolveTone(variant, tone)}.svg`;
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  return `${basePath}/visuals/${variant}-${resolveTone(variant, tone)}.svg`;
 }
 
 /**

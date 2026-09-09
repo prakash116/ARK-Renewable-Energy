@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { enquiryTypes, projectTypes, type EnquiryField } from "./enquiry-options";
 
-/** Server-side validation. Import only from server code (actions, handlers). */
+/** Shared validation used by both server and static-host-compatible forms. */
 export const enquirySchema = z.object({
   enquiryType: z.enum(enquiryTypes, { error: "Choose how we can help" }),
   fullName: z.string().trim().min(2, "Please enter your full name").max(80, "Name is too long"),
